@@ -1,0 +1,76 @@
+import os
+import re
+import glob
+import argparse
+from datetime import datetime
+import sys
+
+sys.argv = [
+    'log_health_check.py',
+    '--folder_path', 'C:/Users/Revati/Logs',
+    '--patterns', '*.log',
+    '--keywords', 'error', 'warn', 'fail',
+]
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Daily Log Health Check Script')
+    parser.add_argument('--folder_path', required=True, help='Path to the log folder')
+    parser.add_argument('--patterns', nargs='+', required=True, help='File patterns to match')
+    parser.add_argument('--keywords', nargs='+', required=True, help='Keywords to search for')
+    parser.add_argument('--case_sensitive', action='store_true', help='Enable case-sensitive keyword search')
+    return parser.parse_args()
+
+def find_log_files(folder_path, patterns):
+    matched_files = []
+    for pattern in patterns:
+        matched = glob.glob(os.path.join(folder_path, pattern))
+        matched_files.extend(matched)
+    return matched_files
+
+def scan_logs(files, keywords, case_sensitive):
+    matched_lines = []
+    keyword_counts = {kw: 0 for kw in keywords}
+    flags = 0 if case_sensitive else re.IGNORECASE
+    for file_path in files:
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    line_logged = False
+                    for kw in keywords:
+                        matches = re.findall(re.escape(kw), line, flags)
+                        if matches:
+                            keyword_counts[kw] += len(matches)
+                            if not line_logged:
+                                matched_lines.append(f"{file_path}: {line.strip()}")
+                                line_logged = True
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+    return matched_lines, keyword_counts
+
+def generate_report_text(matched_lines, keyword_counts):
+    lines = []
+    lines.append("=== Log Health Summary ===\n")
+    for kw, count in keyword_counts.items():
+        lines.append(f"{kw}: {count} occurrence(s)")
+    lines.append("\n--- Matching Lines ---")
+    lines.extend(matched_lines)
+    return "\n".join(lines)
+
+def save_report_to_file(report_text):
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    filename = f"log_health_summary_{date_str}.txt"
+    with open(filename, 'w') as f:
+        f.write(report_text)
+    return filename
+
+def main():
+    args = parse_args()
+    files = find_log_files(args.folder_path, args.patterns)
+    matched_lines, keyword_counts = scan_logs(files, args.keywords, args.case_sensitive)
+    report_text = generate_report_text(matched_lines, keyword_counts)
+    print(report_text)
+    saved_file = save_report_to_file(report_text)
+    print(f"\nReport saved to file: {saved_file}")
+
+if __name__ == "__main__":
+    main()
